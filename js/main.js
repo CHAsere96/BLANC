@@ -12,26 +12,57 @@ function prettyName(file) {
   return file.replace(IMG_EXT, "").replace(/[-_]+/g, " ").trim();
 }
 
-function open(id) {
-  current = works.find((w) => w.id === id);
-  if (!current) return;
-  document.getElementById("m-img").src = current.src;
-  document.getElementById("m-img").alt = current.title;
-  document.getElementById("m-title").textContent = current.title;
-  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + current.id;
-  document.getElementById("m-prompt").textContent = current.prompt;
-  document.getElementById("copy").textContent = "프롬프트 복사";
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
+function repoFromUrl() {
+  if (CONFIG.github && CONFIG.github.includes("/")) return CONFIG.github;
+  const host = location.hostname;
+  if (!host.endsWith(".github.io")) return "";
+  const user = host.split(".")[0];
+  const part = location.pathname.split("/").filter(Boolean)[0];
+  if (!part || part.endsWith(".html")) return user + "/" + user + ".github.io";
+  return user + "/" + part;
 }
 
-function close(e) {
-  if (e) e.preventDefault();
-  modal.classList.remove("open");
-  modal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-  current = null;
+async function loadPrompt(url) {
+  try { return (await fetch(url).then((r) => r.text())).trim(); } catch (_) { return ""; }
+}
+
+async function attachPrompts(list) {
+  await Promise.all(list.map(async (w) => {
+    if (w.prompt) return;
+    const stem = (w.src || "").replace(/^.*\//, "").replace(IMG_EXT, "");
+    w.prompt = await loadPrompt("images/" + stem + ".txt");
+  }));
+  return list;
+}
+
+async function loadFromGitHub() {
+  const repo = repoFromUrl();
+  if (!repo) return null;
+  const res = await fetch("https://api.github.com/repos/" + repo + "/contents/" + CONFIG.folder);
+  if (!res.ok) throw new Error("github " + res.status);
+  const files = await res.json();
+  if (!Array.isArray(files)) throw new Error("not a folder");
+  const prompts = {};
+  files.filter((f) => f.type === "file" && /\.txt$/i.test(f.name)).forEach((f) => {
+    prompts[f.name.replace(/\.txt$/i, "")] = f.download_url;
+  });
+  const images = files
+    .filter((f) => f.type === "file" && IMG_EXT.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const list = [];
+  for (const img of images) {
+    const stem = img.name.replace(IMG_EXT, "");
+    let prompt = "";
+    if (prompts[stem]) prompt = await loadPrompt(prompts[stem]);
+    list.push({
+      id: stem,
+      title: prettyName(img.name),
+      ratio: "9:16",
+      src: CONFIG.folder + "/" + img.name,
+      prompt: prompt || ""
+    });
+  }
+  return list;
 }
 
 function ratioFromImg(img) {
@@ -61,6 +92,7 @@ function render() {
       w.ratio = ratioFromImg(img);
       el.dataset.ratio = w.ratio;
       el.querySelector(".badge").textContent = w.ratio;
+      if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
     else img.addEventListener("load", apply, { once: true });
@@ -69,12 +101,33 @@ function render() {
   countEl.textContent = works.length;
 }
 
+function open(id) {
+  current = works.find((w) => w.id === id);
+  if (!current) return;
+  document.getElementById("m-img").src = current.src;
+  document.getElementById("m-img").alt = current.title;
+  document.getElementById("m-title").textContent = current.title;
+  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + String(current.src).replace(/^.*\//, "").slice(0, 40);
+  document.getElementById("m-prompt").textContent = current.prompt || "";
+  document.getElementById("copy").textContent = "프롬프트 복사";
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function close(e) {
+  if (e) e.preventDefault();
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  current = null;
+}
+
 async function copyPrompt() {
   if (!current) return;
   const btn = document.getElementById("copy");
-  try {
-    await navigator.clipboard.writeText(current.prompt);
-  } catch {
+  try { await navigator.clipboard.writeText(current.prompt || ""); }
+  catch {
     const range = document.createRange();
     range.selectNodeContents(document.getElementById("m-prompt"));
     const sel = window.getSelection();
@@ -99,21 +152,25 @@ document.querySelectorAll(".filters button").forEach((btn) => {
   });
 });
 modal.addEventListener("click", (e) => { if (e.target === modal) close(e); });
-document.querySelector(".x").addEventListener("click", (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  close(e);
-});
+document.querySelector(".x").addEventListener("click", (e) => { e.stopPropagation(); close(e); });
 document.getElementById("copy").addEventListener("click", copyPrompt);
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && modal.classList.contains("open")) close();
 });
-
 close();
-works = (typeof WORKS !== "undefined" && WORKS.length) ? WORKS : [];
-if (!works.length) {
-  grid.innerHTML = '<p class="empty"></p>';
-  countEl.textContent = "0";
-} else {
+
+(async function start() {
+  let list = [];
+  if (CONFIG.useRemoteFolder) {
+    try { list = (await loadFromGitHub()) || []; } catch (_) { list = []; }
+  }
+  if (!list.length) list = (WORKS || []).slice();
+  await attachPrompts(list);
+  works = list;
+  if (!works.length) {
+    grid.innerHTML = '<p class="empty"></p>';
+    countEl.textContent = "0";
+    return;
+  }
   render();
-}
+})();
