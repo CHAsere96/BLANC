@@ -117,9 +117,12 @@ body {
   inset: 0;
   z-index: 30;
   background: rgba(17,17,17,0.62);
-  display: grid;
+  display: none;
   place-items: center;
   padding: 24px;
+}
+.modal.open {
+  display: grid;
 }
 .sheet {
   width: min(1080px, 100%);
@@ -212,7 +215,9 @@ body {
   border-radius: 999px;
   font-size: 13px;
   z-index: 40;
+  display: none;
 }
+.toast.open { display: block; }
 
 @media (max-width: 1100px) { .masonry { columns: 3; } }
 @media (max-width: 740px) {

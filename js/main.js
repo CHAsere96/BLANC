@@ -102,12 +102,15 @@ function open(id) {
   document.getElementById("m-meta").textContent = current.ratio + "  ·  " + current.src.replace(/^images\//, "");
   document.getElementById("m-prompt").textContent = current.prompt;
   document.getElementById("copy").textContent = "프롬프트 복사";
-  modal.hidden = false;
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
 }
 
-function close() {
-  modal.hidden = true;
+function close(e) {
+  if (e) e.preventDefault();
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
   current = null;
 }
@@ -127,9 +130,9 @@ async function copyPrompt() {
     sel.removeAllRanges();
   }
   btn.textContent = "복사됨";
-  toast.hidden = false;
+  toast.classList.add("open");
   setTimeout(() => {
-    toast.hidden = true;
+    toast.classList.remove("open");
     btn.textContent = "프롬프트 복사";
   }, 1400);
 }
@@ -141,12 +144,18 @@ document.querySelectorAll(".filters button").forEach((btn) => {
     render();
   });
 });
-modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
-document.querySelector(".x").addEventListener("click", close);
+modal.addEventListener("click", (e) => { if (e.target === modal) close(e); });
+document.querySelector(".x").addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  close(e);
+});
 document.getElementById("copy").addEventListener("click", copyPrompt);
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !modal.hidden) close();
+  if (e.key === "Escape" && modal.classList.contains("open")) close();
 });
+
+close();
 
 (async function start() {
   try {
