@@ -12,49 +12,26 @@ function prettyName(file) {
   return file.replace(IMG_EXT, "").replace(/[-_]+/g, " ").trim();
 }
 
-function repoFromUrl() {
-  if (CONFIG.github && CONFIG.github.includes("/")) return CONFIG.github;
-  const host = location.hostname;
-  if (!host.endsWith(".github.io")) return "";
-  const user = host.split(".")[0];
-  const part = location.pathname.split("/").filter(Boolean)[0];
-  if (!part || part.endsWith(".html")) return user + "/" + user + ".github.io";
-  return user + "/" + part;
+function open(id) {
+  current = works.find((w) => w.id === id);
+  if (!current) return;
+  document.getElementById("m-img").src = current.src;
+  document.getElementById("m-img").alt = current.title;
+  document.getElementById("m-title").textContent = current.title;
+  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + current.id;
+  document.getElementById("m-prompt").textContent = current.prompt;
+  document.getElementById("copy").textContent = "프롬프트 복사";
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
 }
 
-async function loadFromGitHub() {
-  const repo = repoFromUrl();
-  if (!repo) return null;
-  const res = await fetch("https://api.github.com/repos/" + repo + "/contents/" + CONFIG.folder);
-  if (!res.ok) throw new Error("github " + res.status);
-  const files = await res.json();
-  if (!Array.isArray(files)) throw new Error("not a folder");
-
-  const prompts = {};
-  files.filter((f) => f.type === "file" && /\.txt$/i.test(f.name)).forEach((f) => {
-    prompts[f.name.replace(/\.txt$/i, "")] = f.download_url;
-  });
-
-  const images = files
-    .filter((f) => f.type === "file" && IMG_EXT.test(f.name))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-  const list = [];
-  for (const img of images) {
-    const stem = img.name.replace(IMG_EXT, "");
-    let prompt = "";
-    if (prompts[stem]) {
-      try { prompt = (await fetch(prompts[stem]).then((r) => r.text())).trim(); } catch (_) {}
-    }
-    list.push({
-      id: stem,
-      title: prettyName(img.name),
-      ratio: "9:16",
-      src: CONFIG.folder + "/" + img.name,
-      prompt: prompt || "(프롬프트 없음 — 같은 이름의 .txt를 images 폴더에 올리면 여기에 표시됩니다)"
-    });
-  }
-  return list;
+function close(e) {
+  if (e) e.preventDefault();
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  current = null;
 }
 
 function ratioFromImg(img) {
@@ -84,35 +61,12 @@ function render() {
       w.ratio = ratioFromImg(img);
       el.dataset.ratio = w.ratio;
       el.querySelector(".badge").textContent = w.ratio;
-      if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
     else img.addEventListener("load", apply, { once: true });
     el.addEventListener("click", () => open(el.dataset.id));
   });
   countEl.textContent = works.length;
-}
-
-function open(id) {
-  current = works.find((w) => w.id === id);
-  if (!current) return;
-  document.getElementById("m-img").src = current.src;
-  document.getElementById("m-img").alt = current.title;
-  document.getElementById("m-title").textContent = current.title;
-  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + current.src.replace(/^images\//, "");
-  document.getElementById("m-prompt").textContent = current.prompt;
-  document.getElementById("copy").textContent = "프롬프트 복사";
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-
-function close(e) {
-  if (e) e.preventDefault();
-  modal.classList.remove("open");
-  modal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-  current = null;
 }
 
 async function copyPrompt() {
@@ -156,18 +110,10 @@ window.addEventListener("keydown", (e) => {
 });
 
 close();
-
-(async function start() {
-  try {
-    const remote = await loadFromGitHub();
-    works = remote && remote.length ? remote : (WORKS || []);
-  } catch (_) {
-    works = WORKS || [];
-  }
-  if (!works.length) {
-    grid.innerHTML = '<p class="empty">images 폴더에 jpg/png를 올리면 여기에 나타납니다.</p>';
-    countEl.textContent = "0";
-    return;
-  }
+works = (typeof WORKS !== "undefined" && WORKS.length) ? WORKS : [];
+if (!works.length) {
+  grid.innerHTML = '<p class="empty"></p>';
+  countEl.textContent = "0";
+} else {
   render();
-})();
+}
