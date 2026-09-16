@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BLANC — Lookbook</title>
-  <meta name="description" content="BLANC Lookbook" />
+  <meta name="description" content="BLANC lookbook" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=4" />
 </head>
 <body>
   <header class="top">
@@ -33,7 +33,7 @@
     <span>BLANC</span>
   </footer>
 
-  <div class="modal" id="modal" hidden>
+  <div class="modal" id="modal" aria-hidden="true">
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-title">
       <button class="x" type="button" aria-label="닫기">×</button>
       <div class="sheet-media">
@@ -48,13 +48,9 @@
     </div>
   </div>
 
-  <div class="toast" id="toast" hidden>복사했습니다</div>
+  <div class="toast" id="toast">복사했습니다</div>
 
-  <script src="js/photo1.js"></script>
-  <script src="js/photo2.js"></script>
-  <script src="js/photo3.js"></script>
-  <script src="js/photo4.js"></script>
   <script src="js/works.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/main.js?v=4"></script>
 </body>
 </html>
