@@ -51,10 +51,7 @@ body {
   background: var(--pink);
 }
 
-.hero {
-  padding: 42px 22px 18px;
-  max-width: 720px;
-}
+.hero { padding: 42px 22px 18px; max-width: 720px; }
 .hero h1 {
   font-family: "Cormorant Garamond", serif;
   font-weight: 400;
@@ -62,17 +59,9 @@ body {
   line-height: 0.9;
   letter-spacing: -0.03em;
 }
-.hero p {
-  margin-top: 14px;
-  color: var(--mute);
-  font-size: 14px;
-}
+.hero p { margin-top: 14px; color: var(--mute); font-size: 14px; }
 
-.filters {
-  display: flex;
-  gap: 8px;
-  padding: 8px 22px 22px;
-}
+.filters { display: flex; gap: 8px; padding: 8px 22px 22px; }
 .filters button {
   border: 1px solid #eadfe0;
   background: #fff;
@@ -83,17 +72,9 @@ body {
   letter-spacing: 0.08em;
   cursor: pointer;
 }
-.filters button.on {
-  background: #111;
-  color: #fff;
-  border-color: #111;
-}
+.filters button.on { background: #111; color: #fff; border-color: #111; }
 
-.masonry {
-  columns: 4;
-  column-gap: 14px;
-  padding: 0 22px 80px;
-}
+.masonry { columns: 4; column-gap: 14px; padding: 0 22px 80px; }
 .card {
   break-inside: avoid;
   margin-bottom: 14px;
@@ -103,11 +84,7 @@ body {
   background: var(--pink-soft);
   cursor: pointer;
 }
-.card img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
+.card img { width: 100%; height: auto; display: block; }
 .shade {
   position: absolute;
   inset: auto 0 0 0;
@@ -122,18 +99,10 @@ body {
 }
 .card:hover .shade,
 .card:focus-within .shade { opacity: 1; }
-.badge, .label {
-  color: #fff;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-.badge {
-  background: rgba(0,0,0,0.45);
-  border-radius: 999px;
-  padding: 4px 8px;
-}
-.label { font-weight: 400; }
+.badge, .label { color: #fff; font-size: 11px; letter-spacing: 0.08em; }
+.badge { background: rgba(0,0,0,0.45); border-radius: 999px; padding: 4px 8px; }
 
+.empty { column-span: all; color: var(--mute); padding: 40px 0; }
 .foot {
   display: flex;
   justify-content: space-between;
@@ -218,7 +187,6 @@ body {
   font: 500 13px/1 "IBM Plex Sans KR", sans-serif;
   cursor: pointer;
 }
-.copy:hover { background: #2a2a2a; }
 .x {
   position: absolute;
   top: 10px;
@@ -233,7 +201,6 @@ body {
   line-height: 1;
   cursor: pointer;
 }
-
 .toast {
   position: fixed;
   bottom: 24px;

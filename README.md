@@ -1,20 +1,9 @@
-# BLUSH Lookbook — GitHub Pages
+# BLANC Lookbook
 
-XAZINGA Explore처럼 9:16 / 16:9가 비율 그대로 붙는 메이슨리 화보집입니다.
-카드를 누르면 팝업에서 프롬프트를 복사합니다.
+공개 주소: https://chasere96.github.io/BLANC/
 
-## 이미 올린 저장소를 이 버전으로 바꾸기
+사진을 올릴 때 `works.js`를 고칠 필요가 없습니다.
 
-1. 이 zip을 풉니다.
-2. GitHub 저장소에서 Add file → Upload files
-3. index.html, css/, js/, images/, favicon.svg, README.md 를 다시 올립니다.
-4. 같은 파일은 덮어쓰기됩니다.
-5. Commit 후 1분 뒤 사이트를 새로고침합니다.
-
-## 작품 추가
-
-js/works.js 에 항목을 추가합니다.
-
-id, title, ratio(9:16 또는 16:9), src, prompt
-
-이미지는 images/ 에 넣고 원본 비율 그대로 두면 잘리지 않습니다.
+1. `images/` 에 jpg/png 업로드
+2. 같은 이름으로 `images/사진이름.txt` 에 프롬프트 작성
+3. Commit 후 1분 뒤 새로고침
