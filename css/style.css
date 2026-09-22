@@ -198,6 +198,21 @@ body {
   font: 500 13px/1 "IBM Plex Sans KR", sans-serif;
   cursor: pointer;
 }
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.admin-actions[hidden] { display: none; }
+.edit-btn, .del-btn {
+  flex: 1;
+  border-radius: 999px;
+  padding: 12px 16px;
+  font: 500 13px/1 "IBM Plex Sans KR", sans-serif;
+  cursor: pointer;
+}
+.edit-btn { border: 1px solid #eadfe0; background: #fff; color: var(--ink); }
+.del-btn { border: 1px solid #e8b4bc; background: #fff7f8; color: #9a3b4a; }
 .ghost {
   margin-top: 8px;
   border: 0;
