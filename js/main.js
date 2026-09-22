@@ -1,17 +1,30 @@
 const grid = document.getElementById("grid");
 const modal = document.getElementById("modal");
+const studio = document.getElementById("studio");
 const toast = document.getElementById("toast");
 const countEl = document.getElementById("count");
 const IMG_EXT = /\.(jpe?g|png|webp|gif|avif)$/i;
+const DB_NAME = "blanc-studio";
+const TOKEN_KEY = "blanc_gh_token";
+const PIN_KEY = "blanc_unlocked";
 
 let filter = "all";
 let current = null;
 let works = [];
+let pendingFile = null;
+let admin = sessionStorage.getItem(PIN_KEY) === "1";
 
 function prettyName(file) {
   return file.replace(IMG_EXT, "").replace(/[-_]+/g, " ").trim();
 }
-
+function slug(s) {
+  return String(s || "plate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plate";
+}
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add("open");
+  setTimeout(() => toast.classList.remove("open"), 1600);
+}
 function repoFromUrl() {
   if (CONFIG.github && CONFIG.github.includes("/")) return CONFIG.github;
   const host = location.hostname;
@@ -21,11 +34,35 @@ function repoFromUrl() {
   if (!part || part.endsWith(".html")) return user + "/" + user + ".github.io";
   return user + "/" + part;
 }
-
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("plates", { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function localList() {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve) => {
+      const q = db.transaction("plates").objectStore("plates").getAll();
+      q.onsuccess = () => resolve(q.result || []);
+      q.onerror = () => resolve([]);
+    });
+  } catch (_) { return []; }
+}
+async function localSave(item) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const q = db.transaction("plates", "readwrite").objectStore("plates").put(item);
+    q.onsuccess = resolve;
+    q.onerror = () => reject(q.error);
+  });
+}
 async function loadPrompt(url) {
   try { return (await fetch(url).then((r) => r.text())).trim(); } catch (_) { return ""; }
 }
-
 async function attachPrompts(list) {
   await Promise.all(list.map(async (w) => {
     if (w.prompt) return;
@@ -34,7 +71,6 @@ async function attachPrompts(list) {
   }));
   return list;
 }
-
 async function loadFromGitHub() {
   const repo = repoFromUrl();
   if (!repo) return null;
@@ -58,18 +94,25 @@ async function loadFromGitHub() {
       id: stem,
       title: prettyName(img.name),
       ratio: "9:16",
-      src: CONFIG.folder + "/" + img.name,
+      src: CONFIG.folder + "/" + img.name + "?t=" + img.sha.slice(0, 7),
       prompt: prompt || ""
     });
   }
   return list;
 }
-
+function mergeLists(remote, fallback, local) {
+  const map = new Map();
+  (fallback || []).forEach((w) => map.set(w.id, w));
+  (remote || []).forEach((w) => map.set(w.id, w));
+  (local || []).forEach((w) => {
+    if (!map.has(w.id)) map.set(w.id, w);
+  });
+  return [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+}
 function ratioFromImg(img) {
   if (!img.naturalWidth || !img.naturalHeight) return "9:16";
   return img.naturalWidth >= img.naturalHeight ? "16:9" : "9:16";
 }
-
 function cardHTML(w) {
   return `
     <article class="card" data-id="${w.id}" data-ratio="${w.ratio}">
@@ -80,15 +123,14 @@ function cardHTML(w) {
       </div>
     </article>`;
 }
-
 function render() {
   const list = works.filter((w) => filter === "all" || w.ratio === filter);
-  grid.innerHTML = list.map(cardHTML).join("");
+  grid.innerHTML = list.map(cardHTML).join("") || '<p class="empty"></p>';
   grid.querySelectorAll(".card").forEach((el) => {
     const img = el.querySelector("img");
     const apply = () => {
       const w = works.find((x) => x.id === el.dataset.id);
-      if (!w) return;
+      if (!w || !img.naturalWidth) return;
       w.ratio = ratioFromImg(img);
       el.dataset.ratio = w.ratio;
       el.querySelector(".badge").textContent = w.ratio;
@@ -100,30 +142,115 @@ function render() {
   });
   countEl.textContent = works.length;
 }
-
 function open(id) {
   current = works.find((w) => w.id === id);
   if (!current) return;
   document.getElementById("m-img").src = current.src;
   document.getElementById("m-img").alt = current.title;
   document.getElementById("m-title").textContent = current.title;
-  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + String(current.src).replace(/^.*\//, "").slice(0, 40);
+  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + String(current.src).replace(/^.*\//, "").replace(/\?.*$/, "").slice(0, 40);
   document.getElementById("m-prompt").textContent = current.prompt || "";
   document.getElementById("copy").textContent = "프롬프트 복사";
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
 }
-
-function close(e) {
-  if (e) e.preventDefault();
+function closeModal() {
   modal.classList.remove("open");
   modal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
+  document.body.style.overflow = studio.classList.contains("open") ? "hidden" : "";
   current = null;
 }
+function openStudio() {
+  document.getElementById("token").value = localStorage.getItem(TOKEN_KEY) || "";
+  document.getElementById("gate").hidden = admin;
+  document.getElementById("studio-form").hidden = !admin;
+  studio.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+function closeStudio() {
+  studio.classList.remove("open");
+  document.body.style.overflow = "";
+}
+function setAdmin(on) {
+  admin = on;
+  sessionStorage.setItem(PIN_KEY, on ? "1" : "");
+  document.getElementById("gate").hidden = on;
+  document.getElementById("studio-form").hidden = !on;
+}
+function fileToJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1600;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (Math.max(w, h) > max) {
+        const s = max / Math.max(w, h);
+        w = Math.round(w * s); h = Math.round(h * s);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        if (!blob) return reject(new Error("jpeg"));
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          blob,
+          dataUrl: reader.result,
+          b64: reader.result.split(",")[1],
+          ratio: w >= h ? "16:9" : "9:16"
+        });
+        reader.readAsDataURL(blob);
+      }, "image/jpeg", 0.82);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+function utf8ToB64(text) {
+  return btoa(unescape(encodeURIComponent(text)));
+}
+async function ghPut(path, contentB64, message) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return false;
+  const repo = CONFIG.github;
+  const url = "https://api.github.com/repos/" + repo + "/contents/" + path;
+  const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
+  let sha;
+  const existing = await fetch(url, { headers });
+  if (existing.ok) sha = (await existing.json()).sha;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ message, content: contentB64, branch: "main", sha })
+  });
+  if (!res.ok) throw new Error((await res.text()).slice(0, 180));
+  return true;
+}
+function previewFile(file) {
+  pendingFile = file;
+  const url = URL.createObjectURL(file);
+  const img = document.getElementById("preview");
+  img.src = url;
+  img.hidden = false;
+  document.getElementById("drop-label").hidden = true;
+  if (!document.getElementById("title").value) {
+    document.getElementById("title").value = prettyName(file.name);
+  }
+}
 
-async function copyPrompt() {
+document.querySelectorAll(".filters button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    filter = btn.dataset.filter;
+    document.querySelectorAll(".filters button").forEach((b) => b.classList.toggle("on", b === btn));
+    render();
+  });
+});
+modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+document.querySelector("#modal .x").addEventListener("click", (e) => { e.stopPropagation(); closeModal(); });
+document.getElementById("copy").addEventListener("click", async () => {
   if (!current) return;
   const btn = document.getElementById("copy");
   try { await navigator.clipboard.writeText(current.prompt || ""); }
@@ -137,40 +264,90 @@ async function copyPrompt() {
     sel.removeAllRanges();
   }
   btn.textContent = "복사됨";
-  toast.classList.add("open");
-  setTimeout(() => {
-    toast.classList.remove("open");
-    btn.textContent = "프롬프트 복사";
-  }, 1400);
-}
+  showToast("복사했습니다");
+  setTimeout(() => { btn.textContent = "프롬프트 복사"; }, 1400);
+});
 
-document.querySelectorAll(".filters button").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    filter = btn.dataset.filter;
-    document.querySelectorAll(".filters button").forEach((b) => b.classList.toggle("on", b === btn));
+document.getElementById("add-btn").addEventListener("click", openStudio);
+document.getElementById("studio-x").addEventListener("click", closeStudio);
+studio.addEventListener("click", (e) => { if (e.target === studio) closeStudio(); });
+document.getElementById("unlock").addEventListener("click", () => {
+  const pin = document.getElementById("pin").value.trim();
+  if (pin === String(CONFIG.adminPin || "")) {
+    setAdmin(true);
+    showToast("인증되었습니다");
+  } else showToast("PIN이 달랍니다");
+});
+document.getElementById("pin").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("unlock").click();
+});
+document.getElementById("lock").addEventListener("click", () => { setAdmin(false); closeStudio(); });
+
+const drop = document.getElementById("drop");
+drop.addEventListener("click", () => document.getElementById("file").click());
+document.getElementById("file").addEventListener("change", (e) => {
+  if (e.target.files[0]) previewFile(e.target.files[0]);
+});
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("on"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("on"); }));
+drop.addEventListener("drop", (e) => {
+  const file = e.dataTransfer.files[0];
+  if (file) previewFile(file);
+});
+
+document.getElementById("studio-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!pendingFile) return showToast("사진을 먼저 넣어주세요");
+  const title = document.getElementById("title").value.trim() || prettyName(pendingFile.name);
+  const prompt = document.getElementById("prompt").value.trim();
+  const token = document.getElementById("token").value.trim();
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  const saveBtn = document.getElementById("save");
+  saveBtn.textContent = "저장 중...";
+  saveBtn.disabled = true;
+  try {
+    const img = await fileToJpeg(pendingFile);
+    const id = Date.now().toString().slice(-6) + "-" + slug(title);
+    const item = { id, title, ratio: img.ratio, src: img.dataUrl, prompt };
+    await localSave(item);
+    let published = false;
+    if (localStorage.getItem(TOKEN_KEY)) {
+      await ghPut(CONFIG.folder + "/" + id + ".jpg", img.b64, "Add " + id);
+      await ghPut(CONFIG.folder + "/" + id + ".txt", utf8ToB64(prompt || ""), "Add prompt " + id);
+      published = true;
+      item.src = CONFIG.folder + "/" + id + ".jpg?t=" + Date.now();
+    }
+    works = mergeLists(works, [], [item]);
     render();
-  });
+    pendingFile = null;
+    document.getElementById("preview").hidden = true;
+    document.getElementById("drop-label").hidden = false;
+    document.getElementById("title").value = "";
+    document.getElementById("prompt").value = "";
+    document.getElementById("file").value = "";
+    showToast(published ? "올렸습니다. 배포까지 1분 정도 걸릴 수 있습니다." : "이 브라우저에 저장했습니다. 토큰을 넣으면 모두에게 보입니다.");
+    closeStudio();
+  } catch (err) {
+    showToast("저장 실패: " + (err.message || err));
+  } finally {
+    saveBtn.textContent = "저장";
+    saveBtn.disabled = false;
+  }
 });
-modal.addEventListener("click", (e) => { if (e.target === modal) close(e); });
-document.querySelector(".x").addEventListener("click", (e) => { e.stopPropagation(); close(e); });
-document.getElementById("copy").addEventListener("click", copyPrompt);
+
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && modal.classList.contains("open")) close();
+  if (e.key !== "Escape") return;
+  if (modal.classList.contains("open")) closeModal();
+  else if (studio.classList.contains("open")) closeStudio();
 });
-close();
 
 (async function start() {
-  let list = [];
+  let remote = [];
   if (CONFIG.useRemoteFolder) {
-    try { list = (await loadFromGitHub()) || []; } catch (_) { list = []; }
+    try { remote = (await loadFromGitHub()) || []; } catch (_) { remote = []; }
   }
-  if (!list.length) list = (WORKS || []).slice();
-  await attachPrompts(list);
-  works = list;
-  if (!works.length) {
-    grid.innerHTML = '<p class="empty"></p>';
-    countEl.textContent = "0";
-    return;
-  }
+  const local = await localList();
+  works = mergeLists(remote, WORKS || [], local);
+  await attachPrompts(works.filter((w) => !w.prompt && !String(w.src).startsWith("data:")));
   render();
 })();
