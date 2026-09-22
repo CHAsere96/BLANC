@@ -11,6 +11,7 @@ let filter = "all";
 let current = null;
 let works = [];
 let pendingFile = null;
+let editingId = null;
 let admin = sessionStorage.getItem(PIN_KEY) === "1";
 
 function showToast(msg) {
@@ -39,6 +40,15 @@ function apiModel(name) {
     "Seedream V5 Pro": "Seedream V5 Pro"
   };
   return map[name] || name;
+}
+function uiModel(name) {
+  const map = {
+    "GPT Image 2": "GPT Image2",
+    "Nano Banana 2": "Nano Banana2",
+    "Nano Banana Pro": "Nano Banana Pro",
+    "Seedream V5 Pro": "Seedream V5 Pro"
+  };
+  return map[name] || name || "";
 }
 function mapApiItem(item) {
   return {
@@ -92,14 +102,9 @@ function render() {
     const apply = () => {
       const w = works.find((x) => x.id === el.dataset.id);
       if (!w || !img.naturalWidth) return;
-      if (!w.model) {
-        w.ratio = ratioFromImg(img);
-        el.dataset.ratio = w.ratio;
-        el.querySelector(".badge").textContent = w.ratio;
-      } else {
-        w.ratio = ratioFromImg(img);
-        el.dataset.ratio = w.ratio;
-      }
+      w.ratio = ratioFromImg(img);
+      el.dataset.ratio = w.ratio;
+      if (!w.model) el.querySelector(".badge").textContent = w.ratio;
       if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
@@ -107,6 +112,9 @@ function render() {
     el.addEventListener("click", () => open(el.dataset.id));
   });
   countEl.textContent = works.length;
+}
+function syncAdminActions() {
+  document.getElementById("admin-actions").hidden = !admin;
 }
 function open(id) {
   current = works.find((w) => w.id === id);
@@ -117,6 +125,7 @@ function open(id) {
   document.getElementById("m-meta").textContent = [current.ratio, current.model].filter(Boolean).join("  ·  ");
   document.getElementById("m-prompt").textContent = current.prompt || "";
   document.getElementById("copy").textContent = "프롬프트 복사";
+  syncAdminActions();
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
@@ -132,7 +141,50 @@ function syncOtpField() {
   document.getElementById("otp").hidden = has;
   document.getElementById("otp-hint").hidden = has;
 }
-function openStudio() {
+function resetStudio(item) {
+  pendingFile = null;
+  document.getElementById("file").value = "";
+  const preview = document.getElementById("preview");
+  const label = document.getElementById("drop-label");
+  if (item) {
+    editingId = item.id;
+    document.getElementById("studio-kicker").textContent = "EDIT PLATE";
+    document.getElementById("studio-title").textContent = "이미지 수정";
+    document.getElementById("title").value = item.title || "";
+    const model = uiModel(item.model);
+    const select = document.getElementById("model");
+    if (model && ![...select.options].some((o) => o.value === model)) {
+      const opt = document.createElement("option");
+      opt.value = model;
+      opt.textContent = model;
+      select.appendChild(opt);
+    }
+    select.value = model || "";
+    document.getElementById("prompt").value = item.prompt || "";
+    if (item.full || item.src) {
+      preview.src = item.full || item.src;
+      preview.hidden = false;
+      label.hidden = true;
+    } else {
+      preview.hidden = true;
+      label.hidden = false;
+    }
+    document.getElementById("save").textContent = "수정 저장";
+  } else {
+    editingId = null;
+    document.getElementById("studio-kicker").textContent = "NEW PLATE";
+    document.getElementById("studio-title").textContent = "이미지 추가";
+    document.getElementById("title").value = "";
+    document.getElementById("model").selectedIndex = 0;
+    document.getElementById("prompt").value = "";
+    preview.removeAttribute("src");
+    preview.hidden = true;
+    label.hidden = false;
+    document.getElementById("save").textContent = "저장";
+  }
+}
+function openStudio(item) {
+  resetStudio(item || null);
   document.getElementById("gate").hidden = admin;
   document.getElementById("studio-form").hidden = !admin;
   syncOtpField();
@@ -141,13 +193,14 @@ function openStudio() {
 }
 function closeStudio() {
   studio.classList.remove("open");
-  document.body.style.overflow = "";
+  document.body.style.overflow = modal.classList.contains("open") ? "hidden" : "";
 }
 function setAdmin(on) {
   admin = on;
   sessionStorage.setItem(PIN_KEY, on ? "1" : "");
   document.getElementById("gate").hidden = on;
   document.getElementById("studio-form").hidden = !on;
+  syncAdminActions();
   if (on) syncOtpField();
 }
 function canvasWebp(source, max, quality) {
@@ -253,7 +306,7 @@ document.getElementById("copy").addEventListener("click", async () => {
   setTimeout(() => { btn.textContent = "프롬프트 복사"; }, 1400);
 });
 
-document.getElementById("add-btn").addEventListener("click", openStudio);
+document.getElementById("add-btn").addEventListener("click", () => openStudio(null));
 document.getElementById("studio-x").addEventListener("click", closeStudio);
 studio.addEventListener("click", (e) => { if (e.target === studio) closeStudio(); });
 document.getElementById("unlock").addEventListener("click", () => {
@@ -272,6 +325,42 @@ document.getElementById("lock").addEventListener("click", () => {
   closeStudio();
 });
 
+document.getElementById("edit-btn").addEventListener("click", () => {
+  if (!current) return;
+  const item = current;
+  closeModal();
+  if (!admin) {
+    openStudio(item);
+    return;
+  }
+  openStudio(item);
+});
+document.getElementById("del-btn").addEventListener("click", async () => {
+  if (!current) return;
+  if (!confirm("이 이미지를 삭제할까요? 모든 방문객 갤러리에서 사라집니다.")) return;
+  const id = current.id;
+  try {
+    if (!admin) {
+      showToast("먼저 PIN으로 인증해주세요");
+      openStudio(null);
+      return;
+    }
+    const token = await ensureToken();
+    const res = await fetch(API() + "/api/images", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ ids: [id] })
+    });
+    if (!res.ok) throw new Error((await res.text()) || "삭제 실패");
+    works = works.filter((w) => w.id !== id);
+    render();
+    closeModal();
+    showToast("삭제했습니다");
+  } catch (err) {
+    showToast(err.message || String(err));
+  }
+});
+
 const drop = document.getElementById("drop");
 drop.addEventListener("click", () => document.getElementById("file").click());
 document.getElementById("file").addEventListener("change", (e) => {
@@ -286,71 +375,92 @@ drop.addEventListener("drop", (e) => {
 
 document.getElementById("studio-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!pendingFile) return showToast("사진을 먼저 넣어주세요");
-  const title = document.getElementById("title").value.trim() || prettyName(pendingFile.name);
+  const title = document.getElementById("title").value.trim() || (pendingFile ? prettyName(pendingFile.name) : "plate");
   const model = document.getElementById("model").value;
   if (!model) return showToast("모델을 선택해주세요");
   const prompt = document.getElementById("prompt").value.trim();
   if (!prompt) return showToast("프롬프트를 넣어주세요");
+  if (!editingId && !pendingFile) return showToast("사진을 먼저 넣어주세요");
   const saveBtn = document.getElementById("save");
-  saveBtn.textContent = "WebP 변환 중...";
   saveBtn.disabled = true;
   try {
     const token = await ensureToken();
-    const pair = await fileToPair(pendingFile);
-    const id = crypto.randomUUID();
-    const originalKey = "orig/" + id + ".webp";
-    const thumbKey = "thumb/" + id + ".webp";
-    saveBtn.textContent = "올리는 중...";
-    await Promise.all([
-      uploadKey(originalKey, pair.original.blob, token),
-      uploadKey(thumbKey, pair.thumb.blob, token)
-    ]);
-    saveBtn.textContent = "저장 중...";
-    const res = await fetch(API() + "/api/images", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-      body: JSON.stringify({
+    let payload = {
+      title,
+      model_name: apiModel(model),
+      prompt,
+      tags: ["Lookbook"]
+    };
+    if (pendingFile) {
+      saveBtn.textContent = "WebP 변환 중...";
+      const pair = await fileToPair(pendingFile);
+      const nid = crypto.randomUUID();
+      const originalKey = "orig/" + nid + ".webp";
+      const thumbKey = "thumb/" + nid + ".webp";
+      saveBtn.textContent = "올리는 중...";
+      await Promise.all([
+        uploadKey(originalKey, pair.original.blob, token),
+        uploadKey(thumbKey, pair.thumb.blob, token)
+      ]);
+      payload = {
+        ...payload,
         original_key: originalKey,
         thumb_key: thumbKey,
         width: pair.original.width,
         height: pair.original.height,
         format: "image",
-        model_name: apiModel(model),
+        ratio: pair.original.ratio
+      };
+    }
+    saveBtn.textContent = "저장 중...";
+    if (editingId) {
+      const res = await fetch(API() + "/api/images/" + encodeURIComponent(editingId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error((await res.text()) || "수정 실패");
+      const updated = await res.json().catch(() => null);
+      const next = updated && updated.id ? mapApiItem(updated) : {
+        ...(works.find((w) => w.id === editingId) || {}),
+        id: editingId,
+        title,
+        model: apiModel(model),
         prompt,
-        tags: ["Lookbook"],
-        ratio: pair.original.ratio,
-        title
-      })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const created = await res.json().catch(() => null);
-    const item = created && created.id ? mapApiItem(created) : {
-      id,
-      title,
-      ratio: pair.original.ratio,
-      model: apiModel(model),
-      src: mediaUrl(thumbKey),
-      full: mediaUrl(originalKey),
-      prompt
-    };
-    works = [item].concat(works.filter((w) => w.id !== item.id));
+        src: payload.thumb_key ? mediaUrl(payload.thumb_key) : (works.find((w) => w.id === editingId) || {}).src,
+        full: payload.original_key ? mediaUrl(payload.original_key) : (works.find((w) => w.id === editingId) || {}).full,
+        ratio: payload.ratio || (works.find((w) => w.id === editingId) || {}).ratio
+      };
+      works = works.map((w) => w.id === editingId ? next : w);
+      showToast("수정했습니다");
+    } else {
+      const res = await fetch(API() + "/api/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created = await res.json().catch(() => null);
+      const item = created && created.id ? mapApiItem(created) : {
+        id: payload.original_key || Date.now().toString(),
+        title,
+        ratio: payload.ratio || "9:16",
+        model: apiModel(model),
+        src: mediaUrl(payload.thumb_key),
+        full: mediaUrl(payload.original_key),
+        prompt
+      };
+      works = [item].concat(works.filter((w) => w.id !== item.id));
+      showToast("올렸습니다. 모든 방문객에게 보입니다.");
+    }
     render();
-    pendingFile = null;
-    document.getElementById("preview").hidden = true;
-    document.getElementById("drop-label").hidden = false;
-    document.getElementById("title").value = "";
-    document.getElementById("prompt").value = "";
-    document.getElementById("model").selectedIndex = 0;
-    document.getElementById("file").value = "";
     document.getElementById("otp").value = "";
-    showToast("올렸습니다. 모든 방문객에게 보입니다.");
     closeStudio();
   } catch (err) {
     showToast(err.message || String(err));
   } finally {
-    saveBtn.textContent = "저장";
     saveBtn.disabled = false;
+    saveBtn.textContent = editingId ? "수정 저장" : "저장";
   }
 });
 
@@ -360,6 +470,7 @@ window.addEventListener("keydown", (e) => {
   else if (studio.classList.contains("open")) closeStudio();
 });
 
+syncAdminActions();
 (async function start() {
   try {
     works = await loadFromApi();
