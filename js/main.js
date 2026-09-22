@@ -5,8 +5,8 @@ const toast = document.getElementById("toast");
 const countEl = document.getElementById("count");
 const IMG_EXT = /\.(jpe?g|png|webp|gif|avif)$/i;
 const DB_NAME = "blanc-studio";
-const TOKEN_KEY = "blanc_gh_token";
 const PIN_KEY = "blanc_unlocked";
+const CATALOG_KEY = "blanc_public_catalog";
 
 let filter = "all";
 let current = null;
@@ -23,7 +23,7 @@ function slug(s) {
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add("open");
-  setTimeout(() => toast.classList.remove("open"), 1600);
+  setTimeout(() => toast.classList.remove("open"), 1800);
 }
 function repoFromUrl() {
   if (CONFIG.github && CONFIG.github.includes("/")) return CONFIG.github;
@@ -33,6 +33,18 @@ function repoFromUrl() {
   const part = location.pathname.split("/").filter(Boolean)[0];
   if (!part || part.endsWith(".html")) return user + "/" + user + ".github.io";
   return user + "/" + part;
+}
+function parseSidecar(text) {
+  const raw = String(text || "").replace(/^\uFEFF/, "");
+  const lines = raw.split(/\r?\n/);
+  let model = "";
+  let start = 0;
+  if (/^(MODEL|모델)\s*:/i.test(lines[0] || "")) {
+    model = lines[0].split(":").slice(1).join(":").trim();
+    start = 1;
+    if (lines[1] === "") start = 2;
+  }
+  return { model, prompt: lines.slice(start).join("\n").trim() };
 }
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -60,14 +72,24 @@ async function localSave(item) {
     q.onerror = () => reject(q.error);
   });
 }
+function readSharedCatalog() {
+  try { return JSON.parse(localStorage.getItem(CATALOG_KEY) || "[]"); }
+  catch (_) { return []; }
+}
+function writeSharedCatalog(list) {
+  localStorage.setItem(CATALOG_KEY, JSON.stringify(list));
+}
 async function loadPrompt(url) {
-  try { return (await fetch(url).then((r) => r.text())).trim(); } catch (_) { return ""; }
+  try { return (await fetch(url).then((r) => r.text())); } catch (_) { return ""; }
 }
 async function attachPrompts(list) {
   await Promise.all(list.map(async (w) => {
-    if (w.prompt) return;
-    const stem = (w.src || "").replace(/^.*\//, "").replace(IMG_EXT, "");
-    w.prompt = await loadPrompt("images/" + stem + ".txt");
+    if (w.prompt && w.model) return;
+    const stem = String(w.src || "").replace(/^.*\//, "").replace(/\?.*$/, "").replace(IMG_EXT, "");
+    const raw = await loadPrompt("images/" + stem + ".txt");
+    const parsed = parseSidecar(raw);
+    if (!w.prompt) w.prompt = parsed.prompt;
+    if (!w.model) w.model = parsed.model;
   }));
   return list;
 }
@@ -88,25 +110,29 @@ async function loadFromGitHub() {
   const list = [];
   for (const img of images) {
     const stem = img.name.replace(IMG_EXT, "");
+    let model = "";
     let prompt = "";
-    if (prompts[stem]) prompt = await loadPrompt(prompts[stem]);
+    if (prompts[stem]) {
+      const parsed = parseSidecar(await loadPrompt(prompts[stem]));
+      model = parsed.model;
+      prompt = parsed.prompt;
+    }
     list.push({
       id: stem,
       title: prettyName(img.name),
       ratio: "9:16",
+      model,
       src: CONFIG.folder + "/" + img.name + "?t=" + img.sha.slice(0, 7),
       prompt: prompt || ""
     });
   }
   return list;
 }
-function mergeLists(remote, fallback, local) {
+function mergeLists() {
   const map = new Map();
-  (fallback || []).forEach((w) => map.set(w.id, w));
-  (remote || []).forEach((w) => map.set(w.id, w));
-  (local || []).forEach((w) => {
-    if (!map.has(w.id)) map.set(w.id, w);
-  });
+  const add = (arr) => (arr || []).forEach((w) => { if (w && w.id) map.set(w.id, w); });
+  add(WORKS);
+  for (let i = 1; i < arguments.length; i++) add(arguments[i]);
   return [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
 }
 function ratioFromImg(img) {
@@ -114,11 +140,12 @@ function ratioFromImg(img) {
   return img.naturalWidth >= img.naturalHeight ? "16:9" : "9:16";
 }
 function cardHTML(w) {
+  const badge = w.model || w.ratio;
   return `
     <article class="card" data-id="${w.id}" data-ratio="${w.ratio}">
       <img src="${w.src}" alt="${w.title}" loading="lazy" />
       <div class="shade">
-        <span class="badge">${w.ratio}</span>
+        <span class="badge">${badge}</span>
         <span class="label">${w.title}</span>
       </div>
     </article>`;
@@ -133,7 +160,7 @@ function render() {
       if (!w || !img.naturalWidth) return;
       w.ratio = ratioFromImg(img);
       el.dataset.ratio = w.ratio;
-      el.querySelector(".badge").textContent = w.ratio;
+      if (!w.model) el.querySelector(".badge").textContent = w.ratio;
       if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
@@ -148,7 +175,8 @@ function open(id) {
   document.getElementById("m-img").src = current.src;
   document.getElementById("m-img").alt = current.title;
   document.getElementById("m-title").textContent = current.title;
-  document.getElementById("m-meta").textContent = current.ratio + "  ·  " + String(current.src).replace(/^.*\//, "").replace(/\?.*$/, "").slice(0, 40);
+  const bits = [current.ratio, current.model].filter(Boolean);
+  document.getElementById("m-meta").textContent = bits.join("  ·  ");
   document.getElementById("m-prompt").textContent = current.prompt || "";
   document.getElementById("copy").textContent = "프롬프트 복사";
   modal.classList.add("open");
@@ -162,7 +190,6 @@ function closeModal() {
   current = null;
 }
 function openStudio() {
-  document.getElementById("token").value = localStorage.getItem(TOKEN_KEY) || "";
   document.getElementById("gate").hidden = admin;
   document.getElementById("studio-form").hidden = !admin;
   studio.classList.add("open");
@@ -178,7 +205,18 @@ function setAdmin(on) {
   document.getElementById("gate").hidden = on;
   document.getElementById("studio-form").hidden = !on;
 }
-function fileToJpeg(file) {
+function blobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      dataUrl: reader.result,
+      b64: String(reader.result).split(",")[1]
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+function fileToWebp(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -187,23 +225,26 @@ function fileToJpeg(file) {
       let w = img.naturalWidth, h = img.naturalHeight;
       if (Math.max(w, h) > max) {
         const s = max / Math.max(w, h);
-        w = Math.round(w * s); h = Math.round(h * s);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
       }
       const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
+      canvas.width = w;
+      canvas.height = h;
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
-      canvas.toBlob((blob) => {
-        if (!blob) return reject(new Error("jpeg"));
-        const reader = new FileReader();
-        reader.onload = () => resolve({
-          blob,
-          dataUrl: reader.result,
-          b64: reader.result.split(",")[1],
-          ratio: w >= h ? "16:9" : "9:16"
-        });
-        reader.readAsDataURL(blob);
-      }, "image/jpeg", 0.82);
+      const finish = async (blob, ext) => {
+        if (!blob) return reject(new Error("compress"));
+        const enc = await blobToB64(blob);
+        resolve({ ...enc, blob, ext, ratio: w >= h ? "16:9" : "9:16" });
+      };
+      canvas.toBlob((webp) => {
+        if (webp && webp.size > 0 && (webp.type === "image/webp" || webp.size < file.size)) {
+          finish(webp, "webp");
+        } else {
+          canvas.toBlob((jpg) => finish(jpg, "jpg"), "image/jpeg", 0.82);
+        }
+      }, "image/webp", 0.8);
     };
     img.onerror = reject;
     img.src = url;
@@ -213,7 +254,7 @@ function utf8ToB64(text) {
   return btoa(unescape(encodeURIComponent(text)));
 }
 async function ghPut(path, contentB64, message) {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem("blanc_gh_token") || CONFIG.publishToken || "";
   if (!token) return false;
   const repo = CONFIG.github;
   const url = "https://api.github.com/repos/" + repo + "/contents/" + path;
@@ -299,33 +340,40 @@ document.getElementById("studio-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!pendingFile) return showToast("사진을 먼저 넣어주세요");
   const title = document.getElementById("title").value.trim() || prettyName(pendingFile.name);
+  const model = document.getElementById("model").value;
+  if (!model) return showToast("모델을 선택해주세요");
   const prompt = document.getElementById("prompt").value.trim();
-  const token = document.getElementById("token").value.trim();
-  if (token) localStorage.setItem(TOKEN_KEY, token);
   const saveBtn = document.getElementById("save");
-  saveBtn.textContent = "저장 중...";
+  saveBtn.textContent = "WebP 변환 중...";
   saveBtn.disabled = true;
   try {
-    const img = await fileToJpeg(pendingFile);
+    const img = await fileToWebp(pendingFile);
     const id = Date.now().toString().slice(-6) + "-" + slug(title);
-    const item = { id, title, ratio: img.ratio, src: img.dataUrl, prompt };
+    const sidecar = "MODEL: " + model + "\n\n" + (prompt || "");
+    const item = { id, title, ratio: img.ratio, model, src: img.dataUrl, prompt };
     await localSave(item);
+    const shared = readSharedCatalog().filter((x) => x.id !== id).concat([{ ...item }]);
+    writeSharedCatalog(shared);
     let published = false;
-    if (localStorage.getItem(TOKEN_KEY)) {
-      await ghPut(CONFIG.folder + "/" + id + ".jpg", img.b64, "Add " + id);
-      await ghPut(CONFIG.folder + "/" + id + ".txt", utf8ToB64(prompt || ""), "Add prompt " + id);
-      published = true;
-      item.src = CONFIG.folder + "/" + id + ".jpg?t=" + Date.now();
+    try {
+      published = await ghPut(CONFIG.folder + "/" + id + "." + img.ext, img.b64, "Add " + id);
+      if (published) {
+        await ghPut(CONFIG.folder + "/" + id + ".txt", utf8ToB64(sidecar), "Add prompt " + id);
+        item.src = CONFIG.folder + "/" + id + "." + img.ext + "?t=" + Date.now();
+      }
+    } catch (_) {
+      published = false;
     }
-    works = mergeLists(works, [], [item]);
+    works = mergeLists(WORKS, works, [item]);
     render();
     pendingFile = null;
     document.getElementById("preview").hidden = true;
     document.getElementById("drop-label").hidden = false;
     document.getElementById("title").value = "";
     document.getElementById("prompt").value = "";
+    document.getElementById("model").selectedIndex = 0;
     document.getElementById("file").value = "";
-    showToast(published ? "올렸습니다. 배포까지 1분 정도 걸릴 수 있습니다." : "이 브라우저에 저장했습니다. 토큰을 넣으면 모두에게 보입니다.");
+    showToast(published ? "올렸습니다." : "저장했습니다. 배포를 기다리면 모두에게 보입니다.");
     closeStudio();
   } catch (err) {
     showToast("저장 실패: " + (err.message || err));
@@ -347,7 +395,7 @@ window.addEventListener("keydown", (e) => {
     try { remote = (await loadFromGitHub()) || []; } catch (_) { remote = []; }
   }
   const local = await localList();
-  works = mergeLists(remote, WORKS || [], local);
-  await attachPrompts(works.filter((w) => !w.prompt && !String(w.src).startsWith("data:")));
+  works = mergeLists(WORKS, remote, readSharedCatalog(), local);
+  await attachPrompts(works.filter((w) => !String(w.src || "").startsWith("data:")));
   render();
 })();
