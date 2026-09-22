@@ -9,12 +9,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=4" />
+  <link rel="stylesheet" href="css/style.css?v=5" />
 </head>
 <body>
   <header class="top">
     <a class="mark" href="./">BLANC</a>
-    <p class="live"><span></span> LOOKBOOK · <em id="count">0</em> plates</p>
+    <div class="top-right">
+      <p class="live"><span></span> LOOKBOOK · <em id="count">0</em> plates</p>
+      <button class="add-btn" id="add-btn" type="button">+ 추가</button>
+    </div>
   </header>
 
   <section class="hero">
@@ -48,9 +51,37 @@
     </div>
   </div>
 
+  <div class="modal" id="studio" aria-hidden="true">
+    <div class="studio-sheet" role="dialog" aria-modal="true">
+      <button class="x" type="button" id="studio-x" aria-label="닫기">×</button>
+      <div id="gate">
+        <p class="m-meta">STUDIO</p>
+        <h2>관리자 인증</h2>
+        <p class="hint">핀을 입력하면 사진과 프롬프트를 바로 올릴 수 있습니다.</p>
+        <input id="pin" type="password" inputmode="text" autocomplete="off" placeholder="PIN" />
+        <button class="copy" type="button" id="unlock">인증</button>
+      </div>
+      <form id="studio-form" hidden>
+        <p class="m-meta">NEW PLATE</p>
+        <h2>이미지 추가</h2>
+        <label class="drop" id="drop">
+          <input id="file" type="file" accept="image/*" hidden />
+          <img id="preview" alt="" hidden />
+          <span id="drop-label">사진을 끌어넣거나 클릭</span>
+        </label>
+        <input id="title" type="text" placeholder="제목 (예: wall)" />
+        <textarea id="prompt" rows="8" placeholder="프롬프트를 붙uc5ec 넣으세요"></textarea>
+        <input id="token" type="password" autocomplete="off" placeholder="GitHub 토큰 (방문객에게도 보이게 할 때)" />
+        <p class="hint">토큰은 이 브라우저에만 저장됩니다. Contents 쓰기 권한이 있는 classic PAT을 넣으세요.</p>
+        <button class="copy" type="submit" id="save">저장</button>
+        <button class="ghost" type="button" id="lock">로그아웃</button>
+      </form>
+    </div>
+  </div>
+
   <div class="toast" id="toast">복사했습니다</div>
 
   <script src="js/works.js"></script>
-  <script src="js/main.js?v=4"></script>
+  <script src="js/main.js?v=5"></script>
 </body>
 </html>
