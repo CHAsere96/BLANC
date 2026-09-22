@@ -3,10 +3,9 @@ const modal = document.getElementById("modal");
 const studio = document.getElementById("studio");
 const toast = document.getElementById("toast");
 const countEl = document.getElementById("count");
-const IMG_EXT = /\.(jpe?g|png|webp|gif|avif)$/i;
-const DB_NAME = "blanc-studio";
 const PIN_KEY = "blanc_unlocked";
-const CATALOG_KEY = "blanc_public_catalog";
+const TOKEN_KEY = "admin_token";
+const API = () => String(CONFIG.api || "").replace(/\/$/, "");
 
 let filter = "all";
 let current = null;
@@ -14,126 +13,61 @@ let works = [];
 let pendingFile = null;
 let admin = sessionStorage.getItem(PIN_KEY) === "1";
 
-function prettyName(file) {
-  return file.replace(IMG_EXT, "").replace(/[-_]+/g, " ").trim();
-}
-function slug(s) {
-  return String(s || "plate").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "plate";
-}
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add("open");
   setTimeout(() => toast.classList.remove("open"), 1800);
 }
-function repoFromUrl() {
-  if (CONFIG.github && CONFIG.github.includes("/")) return CONFIG.github;
-  const host = location.hostname;
-  if (!host.endsWith(".github.io")) return "";
-  const user = host.split(".")[0];
-  const part = location.pathname.split("/").filter(Boolean)[0];
-  if (!part || part.endsWith(".html")) return user + "/" + user + ".github.io";
-  return user + "/" + part;
+function prettyName(file) {
+  return String(file || "plate").replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
 }
-function parseSidecar(text) {
-  const raw = String(text || "").replace(/^\uFEFF/, "");
-  const lines = raw.split(/\r?\n/);
-  let model = "";
-  let start = 0;
-  if (/^(MODEL|모델)\s*:/i.test(lines[0] || "")) {
-    model = lines[0].split(":").slice(1).join(":").trim();
-    start = 1;
-    if (lines[1] === "") start = 2;
-  }
-  return { model, prompt: lines.slice(start).join("\n").trim() };
+function mediaUrl(key) {
+  if (!key) return "";
+  return API() + "/api/images/url?key=" + encodeURIComponent(key);
 }
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("plates", { keyPath: "id" });
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function bucketRatio(item) {
+  if (item.ratio === "16:9" || item.ratio === "9:16") return item.ratio;
+  const w = Number(item.width) || 0, h = Number(item.height) || 0;
+  if (w && h) return w >= h ? "16:9" : "9:16";
+  return "9:16";
 }
-async function localList() {
-  try {
-    const db = await openDb();
-    return await new Promise((resolve) => {
-      const q = db.transaction("plates").objectStore("plates").getAll();
-      q.onsuccess = () => resolve(q.result || []);
-      q.onerror = () => resolve([]);
-    });
-  } catch (_) { return []; }
+function apiModel(name) {
+  const map = {
+    "GPT Image2": "GPT Image 2",
+    "Nano Banana2": "Nano Banana 2",
+    "Nano Banana Pro": "Nano Banana Pro",
+    "Seedream V5 Pro": "Seedream V5 Pro"
+  };
+  return map[name] || name;
 }
-async function localSave(item) {
-  const db = await openDb();
-  await new Promise((resolve, reject) => {
-    const q = db.transaction("plates", "readwrite").objectStore("plates").put(item);
-    q.onsuccess = resolve;
-    q.onerror = () => reject(q.error);
-  });
+function mapApiItem(item) {
+  return {
+    id: item.id,
+    title: item.title || item.model_name || "plate",
+    ratio: bucketRatio(item),
+    model: item.model_name || "",
+    src: mediaUrl(item.thumb_key || item.original_key),
+    full: mediaUrl(item.original_key || item.thumb_key),
+    prompt: item.prompt || ""
+  };
 }
-function readSharedCatalog() {
-  try { return JSON.parse(localStorage.getItem(CATALOG_KEY) || "[]"); }
-  catch (_) { return []; }
-}
-function writeSharedCatalog(list) {
-  localStorage.setItem(CATALOG_KEY, JSON.stringify(list));
-}
-async function loadPrompt(url) {
-  try { return (await fetch(url).then((r) => r.text())); } catch (_) { return ""; }
-}
-async function attachPrompts(list) {
-  await Promise.all(list.map(async (w) => {
-    if (w.prompt && w.model) return;
-    const stem = String(w.src || "").replace(/^.*\//, "").replace(/\?.*$/, "").replace(IMG_EXT, "");
-    const raw = await loadPrompt("images/" + stem + ".txt");
-    const parsed = parseSidecar(raw);
-    if (!w.prompt) w.prompt = parsed.prompt;
-    if (!w.model) w.model = parsed.model;
-  }));
-  return list;
-}
-async function loadFromGitHub() {
-  const repo = repoFromUrl();
-  if (!repo) return null;
-  const res = await fetch("https://api.github.com/repos/" + repo + "/contents/" + CONFIG.folder);
-  if (!res.ok) throw new Error("github " + res.status);
-  const files = await res.json();
-  if (!Array.isArray(files)) throw new Error("not a folder");
-  const prompts = {};
-  files.filter((f) => f.type === "file" && /\.txt$/i.test(f.name)).forEach((f) => {
-    prompts[f.name.replace(/\.txt$/i, "")] = f.download_url;
-  });
-  const images = files
-    .filter((f) => f.type === "file" && IMG_EXT.test(f.name))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+async function loadFromApi() {
   const list = [];
-  for (const img of images) {
-    const stem = img.name.replace(IMG_EXT, "");
-    let model = "";
-    let prompt = "";
-    if (prompts[stem]) {
-      const parsed = parseSidecar(await loadPrompt(prompts[stem]));
-      model = parsed.model;
-      prompt = parsed.prompt;
-    }
-    list.push({
-      id: stem,
-      title: prettyName(img.name),
-      ratio: "9:16",
-      model,
-      src: CONFIG.folder + "/" + img.name + "?t=" + img.sha.slice(0, 7),
-      prompt: prompt || ""
+  let cursor = "";
+  for (let i = 0; i < 20; i++) {
+    const q = new URLSearchParams({ limit: "50" });
+    if (cursor) q.set("cursor", cursor);
+    const res = await fetch(API() + "/api/images?" + q);
+    if (!res.ok) throw new Error("api " + res.status);
+    const data = await res.json();
+    (data.images || []).forEach((item) => {
+      if (item.format && item.format !== "image") return;
+      list.push(mapApiItem(item));
     });
+    cursor = data.next_cursor || "";
+    if (!cursor) break;
   }
   return list;
-}
-function mergeLists() {
-  const map = new Map();
-  const add = (arr) => (arr || []).forEach((w) => { if (w && w.id) map.set(w.id, w); });
-  add(WORKS);
-  for (let i = 1; i < arguments.length; i++) add(arguments[i]);
-  return [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
 }
 function ratioFromImg(img) {
   if (!img.naturalWidth || !img.naturalHeight) return "9:16";
@@ -158,9 +92,14 @@ function render() {
     const apply = () => {
       const w = works.find((x) => x.id === el.dataset.id);
       if (!w || !img.naturalWidth) return;
-      w.ratio = ratioFromImg(img);
-      el.dataset.ratio = w.ratio;
-      if (!w.model) el.querySelector(".badge").textContent = w.ratio;
+      if (!w.model) {
+        w.ratio = ratioFromImg(img);
+        el.dataset.ratio = w.ratio;
+        el.querySelector(".badge").textContent = w.ratio;
+      } else {
+        w.ratio = ratioFromImg(img);
+        el.dataset.ratio = w.ratio;
+      }
       if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
@@ -172,11 +111,10 @@ function render() {
 function open(id) {
   current = works.find((w) => w.id === id);
   if (!current) return;
-  document.getElementById("m-img").src = current.src;
+  document.getElementById("m-img").src = current.full || current.src;
   document.getElementById("m-img").alt = current.title;
   document.getElementById("m-title").textContent = current.title;
-  const bits = [current.ratio, current.model].filter(Boolean);
-  document.getElementById("m-meta").textContent = bits.join("  ·  ");
+  document.getElementById("m-meta").textContent = [current.ratio, current.model].filter(Boolean).join("  ·  ");
   document.getElementById("m-prompt").textContent = current.prompt || "";
   document.getElementById("copy").textContent = "프롬프트 복사";
   modal.classList.add("open");
@@ -189,9 +127,15 @@ function closeModal() {
   document.body.style.overflow = studio.classList.contains("open") ? "hidden" : "";
   current = null;
 }
+function syncOtpField() {
+  const has = !!localStorage.getItem(TOKEN_KEY);
+  document.getElementById("otp").hidden = has;
+  document.getElementById("otp-hint").hidden = has;
+}
 function openStudio() {
   document.getElementById("gate").hidden = admin;
   document.getElementById("studio-form").hidden = !admin;
+  syncOtpField();
   studio.classList.add("open");
   document.body.style.overflow = "hidden";
 }
@@ -204,71 +148,71 @@ function setAdmin(on) {
   sessionStorage.setItem(PIN_KEY, on ? "1" : "");
   document.getElementById("gate").hidden = on;
   document.getElementById("studio-form").hidden = !on;
+  if (on) syncOtpField();
 }
-function blobToB64(blob) {
+function canvasWebp(source, max, quality) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({
-      dataUrl: reader.result,
-      b64: String(reader.result).split(",")[1]
-    });
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
+    let w = source.naturalWidth || source.width;
+    let h = source.naturalHeight || source.height;
+    if (Math.max(w, h) > max) {
+      const s = max / Math.max(w, h);
+      w = Math.round(w * s);
+      h = Math.round(h * s);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(source, 0, 0, w, h);
+    canvas.toBlob((blob) => {
+      if (!blob) return reject(new Error("webp"));
+      resolve({ blob, width: w, height: h, ratio: w >= h ? "16:9" : "9:16" });
+    }, "image/webp", quality);
   });
 }
-function fileToWebp(file) {
+function fileToPair(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const max = 1600;
-      let w = img.naturalWidth, h = img.naturalHeight;
-      if (Math.max(w, h) > max) {
-        const s = max / Math.max(w, h);
-        w = Math.round(w * s);
-        h = Math.round(h * s);
+    img.onload = async () => {
+      try {
+        const original = await canvasWebp(img, 1600, 0.82);
+        const thumb = await canvasWebp(img, 900, 0.75);
+        URL.revokeObjectURL(url);
+        resolve({ original, thumb });
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        reject(err);
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      const finish = async (blob, ext) => {
-        if (!blob) return reject(new Error("compress"));
-        const enc = await blobToB64(blob);
-        resolve({ ...enc, blob, ext, ratio: w >= h ? "16:9" : "9:16" });
-      };
-      canvas.toBlob((webp) => {
-        if (webp && webp.size > 0 && (webp.type === "image/webp" || webp.size < file.size)) {
-          finish(webp, "webp");
-        } else {
-          canvas.toBlob((jpg) => finish(jpg, "jpg"), "image/jpeg", 0.82);
-        }
-      }, "image/webp", 0.8);
     };
     img.onerror = reject;
     img.src = url;
   });
 }
-function utf8ToB64(text) {
-  return btoa(unescape(encodeURIComponent(text)));
-}
-async function ghPut(path, contentB64, message) {
-  const token = localStorage.getItem("blanc_gh_token") || CONFIG.publishToken || "";
-  if (!token) return false;
-  const repo = CONFIG.github;
-  const url = "https://api.github.com/repos/" + repo + "/contents/" + path;
-  const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
-  let sha;
-  const existing = await fetch(url, { headers });
-  if (existing.ok) sha = (await existing.json()).sha;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ message, content: contentB64, branch: "main", sha })
+async function ensureToken() {
+  let token = localStorage.getItem(TOKEN_KEY) || "";
+  if (token) return token;
+  const code = document.getElementById("otp").value.trim();
+  if (!code) throw new Error("관리자 6자리 코드를 입력해주세요");
+  const res = await fetch(API() + "/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
   });
-  if (!res.ok) throw new Error((await res.text()).slice(0, 180));
-  return true;
+  if (!res.ok) throw new Error("관리자 코드가 잘못되었습니다");
+  const data = await res.json();
+  token = data.token || "";
+  if (!token) throw new Error("로그인 실패");
+  localStorage.setItem(TOKEN_KEY, token);
+  syncOtpField();
+  return token;
+}
+async function uploadKey(key, blob, token) {
+  const res = await fetch(API() + "/api/upload?key=" + encodeURIComponent(key), {
+    method: "POST",
+    headers: { "Content-Type": "image/webp", Authorization: "Bearer " + token },
+    body: blob
+  });
+  if (!res.ok) throw new Error("이미지 업로드 실패");
 }
 function previewFile(file) {
   pendingFile = file;
@@ -322,7 +266,11 @@ document.getElementById("unlock").addEventListener("click", () => {
 document.getElementById("pin").addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("unlock").click();
 });
-document.getElementById("lock").addEventListener("click", () => { setAdmin(false); closeStudio(); });
+document.getElementById("lock").addEventListener("click", () => {
+  setAdmin(false);
+  localStorage.removeItem(TOKEN_KEY);
+  closeStudio();
+});
 
 const drop = document.getElementById("drop");
 drop.addEventListener("click", () => document.getElementById("file").click());
@@ -343,28 +291,50 @@ document.getElementById("studio-form").addEventListener("submit", async (e) => {
   const model = document.getElementById("model").value;
   if (!model) return showToast("모델을 선택해주세요");
   const prompt = document.getElementById("prompt").value.trim();
+  if (!prompt) return showToast("프롬프트를 넣어주세요");
   const saveBtn = document.getElementById("save");
   saveBtn.textContent = "WebP 변환 중...";
   saveBtn.disabled = true;
   try {
-    const img = await fileToWebp(pendingFile);
-    const id = Date.now().toString().slice(-6) + "-" + slug(title);
-    const sidecar = "MODEL: " + model + "\n\n" + (prompt || "");
-    const item = { id, title, ratio: img.ratio, model, src: img.dataUrl, prompt };
-    await localSave(item);
-    const shared = readSharedCatalog().filter((x) => x.id !== id).concat([{ ...item }]);
-    writeSharedCatalog(shared);
-    let published = false;
-    try {
-      published = await ghPut(CONFIG.folder + "/" + id + "." + img.ext, img.b64, "Add " + id);
-      if (published) {
-        await ghPut(CONFIG.folder + "/" + id + ".txt", utf8ToB64(sidecar), "Add prompt " + id);
-        item.src = CONFIG.folder + "/" + id + "." + img.ext + "?t=" + Date.now();
-      }
-    } catch (_) {
-      published = false;
-    }
-    works = mergeLists(WORKS, works, [item]);
+    const token = await ensureToken();
+    const pair = await fileToPair(pendingFile);
+    const id = crypto.randomUUID();
+    const originalKey = "orig/" + id + ".webp";
+    const thumbKey = "thumb/" + id + ".webp";
+    saveBtn.textContent = "올리는 중...";
+    await Promise.all([
+      uploadKey(originalKey, pair.original.blob, token),
+      uploadKey(thumbKey, pair.thumb.blob, token)
+    ]);
+    saveBtn.textContent = "저장 중...";
+    const res = await fetch(API() + "/api/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({
+        original_key: originalKey,
+        thumb_key: thumbKey,
+        width: pair.original.width,
+        height: pair.original.height,
+        format: "image",
+        model_name: apiModel(model),
+        prompt,
+        tags: ["Lookbook"],
+        ratio: pair.original.ratio,
+        title
+      })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const created = await res.json().catch(() => null);
+    const item = created && created.id ? mapApiItem(created) : {
+      id,
+      title,
+      ratio: pair.original.ratio,
+      model: apiModel(model),
+      src: mediaUrl(thumbKey),
+      full: mediaUrl(originalKey),
+      prompt
+    };
+    works = [item].concat(works.filter((w) => w.id !== item.id));
     render();
     pendingFile = null;
     document.getElementById("preview").hidden = true;
@@ -373,10 +343,11 @@ document.getElementById("studio-form").addEventListener("submit", async (e) => {
     document.getElementById("prompt").value = "";
     document.getElementById("model").selectedIndex = 0;
     document.getElementById("file").value = "";
-    showToast(published ? "올렸습니다." : "저장했습니다. 배포를 기다리면 모두에게 보입니다.");
+    document.getElementById("otp").value = "";
+    showToast("올렸습니다. 모든 방문객에게 보입니다.");
     closeStudio();
   } catch (err) {
-    showToast("저장 실패: " + (err.message || err));
+    showToast(err.message || String(err));
   } finally {
     saveBtn.textContent = "저장";
     saveBtn.disabled = false;
@@ -390,12 +361,10 @@ window.addEventListener("keydown", (e) => {
 });
 
 (async function start() {
-  let remote = [];
-  if (CONFIG.useRemoteFolder) {
-    try { remote = (await loadFromGitHub()) || []; } catch (_) { remote = []; }
+  try {
+    works = await loadFromApi();
+  } catch (_) {
+    works = (WORKS || []).slice();
   }
-  const local = await localList();
-  works = mergeLists(WORKS, remote, readSharedCatalog(), local);
-  await attachPrompts(works.filter((w) => !String(w.src || "").startsWith("data:")));
   render();
 })();
