@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=6" />
+  <link rel="stylesheet" href="css/style.css?v=7" />
 </head>
 <body>
   <header class="top">
@@ -77,6 +77,8 @@
           <option value="Nano Banana2">Nano Banana2</option>
         </select>
         <textarea id="prompt" rows="8" placeholder="프롬프트를 붙여 넣으세요"></textarea>
+        <input id="otp" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="관리자 6자리 코드" />
+        <p class="hint" id="otp-hint">prom-gallery 관리자와 같은 Google Authenticator 코드입니다. 이 브라우저에서 한 번만 입력하면 됩니다.</p>
         <button class="copy" type="submit" id="save">저장</button>
         <button class="ghost" type="button" id="lock">로그아웃</button>
       </form>
@@ -86,6 +88,6 @@
   <div class="toast" id="toast">복사했습니다</div>
 
   <script src="js/works.js"></script>
-  <script src="js/main.js?v=6"></script>
+  <script src="js/main.js?v=7"></script>
 </body>
 </html>
