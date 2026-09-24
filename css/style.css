@@ -78,7 +78,7 @@ body {
   border-radius: 999px;
   padding: 8px 14px;
   font: 500 12px/1 "IBM Plex Sans KR", sans-serif;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 .filters button.on { background: #111; color: #fff; border-color: #111; }
@@ -94,13 +94,26 @@ body {
   cursor: pointer;
 }
 .card img { width: 100%; height: auto; display: block; }
+.likes {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  color: #e8b4bc;
+  background: rgba(255,255,255,0.88);
+  border-radius: 999px;
+  padding: 5px 9px;
+  font: 500 12px/1 "IBM Plex Sans KR", sans-serif;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+}
 .shade {
   position: absolute;
   inset: auto 0 0 0;
   padding: 28px 12px 12px;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   background: linear-gradient(to top, rgba(17,17,17,0.55), transparent);
   opacity: 0;
