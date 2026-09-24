@@ -7,7 +7,7 @@ const PIN_KEY = "blanc_unlocked";
 const TOKEN_KEY = "admin_token";
 const API = () => String(CONFIG.api || "").replace(/\/$/, "");
 
-let filter = "all";
+let sortMode = "new";
 let current = null;
 let works = [];
 let pendingFile = null;
@@ -25,6 +25,10 @@ function prettyName(file) {
 function mediaUrl(key) {
   if (!key) return "";
   return API() + "/api/images/url?key=" + encodeURIComponent(key);
+}
+function createdMs(item) {
+  const n = Date.parse(item.created || item.created_at || "");
+  return Number.isFinite(n) ? n : 0;
 }
 function bucketRatio(item) {
   if (item.ratio === "16:9" || item.ratio === "9:16") return item.ratio;
@@ -58,8 +62,21 @@ function mapApiItem(item) {
     model: item.model_name || "",
     src: mediaUrl(item.thumb_key || item.original_key),
     full: mediaUrl(item.original_key || item.thumb_key),
-    prompt: item.prompt || ""
+    prompt: item.prompt || "",
+    likes: Number(item.copy_count || item.likes || 0),
+    created: item.created_at || item.created || ""
   };
+}
+function sortedWorks() {
+  const list = works.slice();
+  if (sortMode === "popular") {
+    list.sort((a, b) => (b.likes || 0) - (a.likes || 0) || createdMs(b) - createdMs(a));
+  } else if (sortMode === "old") {
+    list.sort((a, b) => createdMs(a) - createdMs(b));
+  } else {
+    list.sort((a, b) => createdMs(b) - createdMs(a));
+  }
+  return list;
 }
 async function loadFromApi() {
   const list = [];
@@ -88,6 +105,7 @@ function cardHTML(w) {
   return `
     <article class="card" data-id="${w.id}" data-ratio="${w.ratio}">
       <img src="${w.src}" alt="${w.title}" loading="lazy" />
+      <span class="likes">좋아요 ${w.likes || 0}</span>
       <div class="shade">
         <span class="badge">${badge}</span>
         <span class="label">${w.title}</span>
@@ -95,7 +113,7 @@ function cardHTML(w) {
     </article>`;
 }
 function render() {
-  const list = works.filter((w) => filter === "all" || w.ratio === filter);
+  const list = sortedWorks();
   grid.innerHTML = list.map(cardHTML).join("") || '<p class="empty"></p>';
   grid.querySelectorAll(".card").forEach((el) => {
     const img = el.querySelector("img");
@@ -104,8 +122,6 @@ function render() {
       if (!w || !img.naturalWidth) return;
       w.ratio = ratioFromImg(img);
       el.dataset.ratio = w.ratio;
-      if (!w.model) el.querySelector(".badge").textContent = w.ratio;
-      if (filter !== "all" && w.ratio !== filter) el.remove();
     };
     if (img.complete && img.naturalWidth) apply();
     else img.addEventListener("load", apply, { once: true });
@@ -116,13 +132,16 @@ function render() {
 function syncAdminActions() {
   document.getElementById("admin-actions").hidden = !admin;
 }
+function metaText(item) {
+  return [item.ratio, item.model, "좋아요 " + (item.likes || 0)].filter(Boolean).join("  ·  ");
+}
 function open(id) {
   current = works.find((w) => w.id === id);
   if (!current) return;
   document.getElementById("m-img").src = current.full || current.src;
   document.getElementById("m-img").alt = current.title;
   document.getElementById("m-title").textContent = current.title;
-  document.getElementById("m-meta").textContent = [current.ratio, current.model].filter(Boolean).join("  ·  ");
+  document.getElementById("m-meta").textContent = metaText(current);
   document.getElementById("m-prompt").textContent = current.prompt || "";
   document.getElementById("copy").textContent = "프롬프트 복사";
   syncAdminActions();
@@ -278,10 +297,20 @@ function previewFile(file) {
     document.getElementById("title").value = prettyName(file.name);
   }
 }
+function bumpLike(id, count) {
+  works = works.map((w) => w.id === id ? { ...w, likes: count } : w);
+  if (current && current.id === id) {
+    current.likes = count;
+    document.getElementById("m-meta").textContent = metaText(current);
+  }
+  const card = grid.querySelector('.card[data-id="' + id + '"] .likes');
+  if (card) card.textContent = "좋아요 " + count;
+  if (sortMode === "popular") render();
+}
 
 document.querySelectorAll(".filters button").forEach((btn) => {
   btn.addEventListener("click", () => {
-    filter = btn.dataset.filter;
+    sortMode = btn.dataset.sort || "new";
     document.querySelectorAll(".filters button").forEach((b) => b.classList.toggle("on", b === btn));
     render();
   });
@@ -301,6 +330,10 @@ document.getElementById("copy").addEventListener("click", async () => {
     document.execCommand("copy");
     sel.removeAllRanges();
   }
+  const id = current.id;
+  const next = (current.likes || 0) + 1;
+  bumpLike(id, next);
+  fetch(API() + "/api/images/" + encodeURIComponent(id) + "/copy", { method: "POST" }).catch(() => {});
   btn.textContent = "복사됨";
   showToast("복사했습니다");
   setTimeout(() => { btn.textContent = "프롬프트 복사"; }, 1400);
@@ -329,10 +362,6 @@ document.getElementById("edit-btn").addEventListener("click", () => {
   if (!current) return;
   const item = current;
   closeModal();
-  if (!admin) {
-    openStudio(item);
-    return;
-  }
   openStudio(item);
 });
 document.getElementById("del-btn").addEventListener("click", async () => {
@@ -421,15 +450,16 @@ document.getElementById("studio-form").addEventListener("submit", async (e) => {
       });
       if (!res.ok) throw new Error((await res.text()) || "수정 실패");
       const updated = await res.json().catch(() => null);
+      const prev = works.find((w) => w.id === editingId) || {};
       const next = updated && updated.id ? mapApiItem(updated) : {
-        ...(works.find((w) => w.id === editingId) || {}),
+        ...prev,
         id: editingId,
         title,
         model: apiModel(model),
         prompt,
-        src: payload.thumb_key ? mediaUrl(payload.thumb_key) : (works.find((w) => w.id === editingId) || {}).src,
-        full: payload.original_key ? mediaUrl(payload.original_key) : (works.find((w) => w.id === editingId) || {}).full,
-        ratio: payload.ratio || (works.find((w) => w.id === editingId) || {}).ratio
+        src: payload.thumb_key ? mediaUrl(payload.thumb_key) : prev.src,
+        full: payload.original_key ? mediaUrl(payload.original_key) : prev.full,
+        ratio: payload.ratio || prev.ratio
       };
       works = works.map((w) => w.id === editingId ? next : w);
       showToast("수정했습니다");
@@ -448,8 +478,12 @@ document.getElementById("studio-form").addEventListener("submit", async (e) => {
         model: apiModel(model),
         src: mediaUrl(payload.thumb_key),
         full: mediaUrl(payload.original_key),
-        prompt
+        prompt,
+        likes: 0,
+        created: new Date().toISOString()
       };
+      if (!item.created) item.created = new Date().toISOString();
+      if (item.likes == null) item.likes = 0;
       works = [item].concat(works.filter((w) => w.id !== item.id));
       showToast("올렸습니다. 모든 방문객에게 보입니다.");
     }
