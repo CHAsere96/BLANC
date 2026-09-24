@@ -1,18 +1,38 @@
 const grid = document.getElementById("grid");
+const moreEl = document.getElementById("more");
 const modal = document.getElementById("modal");
 const studio = document.getElementById("studio");
 const toast = document.getElementById("toast");
 const countEl = document.getElementById("count");
 const PIN_KEY = "blanc_unlocked";
 const TOKEN_KEY = "admin_token";
+const PAGE = 12;
 const API = () => String(CONFIG.api || "").replace(/\/$/, "");
 
 let sortMode = "new";
 let current = null;
 let works = [];
+let shown = 0;
 let pendingFile = null;
 let editingId = null;
 let admin = sessionStorage.getItem(PIN_KEY) === "1";
+
+const lazyObs = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    const img = entry.target;
+    const src = img.getAttribute("data-src");
+    if (src) {
+      img.src = src;
+      img.removeAttribute("data-src");
+    }
+    lazyObs.unobserve(img);
+  });
+}, { rootMargin: "600px 0px" });
+
+const moreObs = new IntersectionObserver((entries) => {
+  if (entries.some((e) => e.isIntersecting)) appendPage();
+}, { rootMargin: "800px 0px" });
 
 function showToast(msg) {
   toast.textContent = msg;
@@ -96,15 +116,11 @@ async function loadFromApi() {
   }
   return list;
 }
-function ratioFromImg(img) {
-  if (!img.naturalWidth || !img.naturalHeight) return "9:16";
-  return img.naturalWidth >= img.naturalHeight ? "16:9" : "9:16";
-}
 function cardHTML(w) {
   const badge = w.model || w.ratio;
   return `
     <article class="card" data-id="${w.id}" data-ratio="${w.ratio}">
-      <img src="${w.src}" alt="${w.title}" loading="lazy" />
+      <img data-src="${w.src}" alt="${w.title}" decoding="async" />
       <span class="likes">좋아요 ${w.likes || 0}</span>
       <div class="shade">
         <span class="badge">${badge}</span>
@@ -112,22 +128,41 @@ function cardHTML(w) {
       </div>
     </article>`;
 }
-function render() {
+function bindCard(el) {
+  const img = el.querySelector("img");
+  img.addEventListener("load", () => img.classList.add("on"), { once: true });
+  lazyObs.observe(img);
+  el.addEventListener("click", () => open(el.dataset.id));
+}
+function appendPage() {
   const list = sortedWorks();
-  grid.innerHTML = list.map(cardHTML).join("") || '<p class="empty"></p>';
-  grid.querySelectorAll(".card").forEach((el) => {
-    const img = el.querySelector("img");
-    const apply = () => {
-      const w = works.find((x) => x.id === el.dataset.id);
-      if (!w || !img.naturalWidth) return;
-      w.ratio = ratioFromImg(img);
-      el.dataset.ratio = w.ratio;
-    };
-    if (img.complete && img.naturalWidth) apply();
-    else img.addEventListener("load", apply, { once: true });
-    el.addEventListener("click", () => open(el.dataset.id));
+  if (shown >= list.length) {
+    moreEl.hidden = true;
+    return;
+  }
+  const next = list.slice(shown, shown + PAGE);
+  const wrap = document.createElement("div");
+  wrap.innerHTML = next.map(cardHTML).join("");
+  [...wrap.children].forEach((el) => {
+    grid.appendChild(el);
+    bindCard(el);
   });
+  shown += next.length;
+  moreEl.hidden = shown >= list.length;
   countEl.textContent = works.length;
+}
+function render() {
+  shown = 0;
+  grid.innerHTML = "";
+  const list = sortedWorks();
+  if (!list.length) {
+    grid.innerHTML = '<p class="empty"></p>';
+    moreEl.hidden = true;
+    countEl.textContent = "0";
+    return;
+  }
+  moreEl.hidden = false;
+  appendPage();
 }
 function syncAdminActions() {
   document.getElementById("admin-actions").hidden = !admin;
@@ -504,6 +539,7 @@ window.addEventListener("keydown", (e) => {
   else if (studio.classList.contains("open")) closeStudio();
 });
 
+if (moreEl) moreObs.observe(moreEl);
 syncAdminActions();
 (async function start() {
   try {
