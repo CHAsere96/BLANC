@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>글쓰기 — BLANC</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=12" />
+  <link rel="stylesheet" href="css/blog.css?v=12" />
+</head>
+<body>
+  <header class="top">
+    <a class="mark" href="./">BLANC</a>
+    <nav class="nav">
+      <a href="./">Lookbook</a>
+      <a class="on" href="blog.html">Blog</a>
+    </nav>
+    <div class="top-right">
+      <button class="add-btn" id="publish" type="button">발행</button>
+    </div>
+  </header>
+  <div id="gate" class="editor">
+    <p class="m-meta">STUDIO</p>
+    <h2>관리자 인증</h2>
+    <input id="pin" type="password" placeholder="PIN" />
+    <button class="copy" id="unlock" type="button">인증</button>
+    <input id="otp" type="text" inputmode="numeric" maxlength="6" placeholder="관리자 6자리 코드" />
+    <p class="hint">Lookbook과 같은 PIN, prom-gallery와 같은 인증 코드입니다.</p>
+  </div>
+  <div id="desk" class="editor" hidden>
+    <label class="cover-pick" id="cover-pick">표지를 눌러 이미지를 넣으세요<input id="cover" type="file" accept="image/*" hidden /></label>
+    <input id="title" class="editor-title" placeholder="제목" />
+    <div class="tools" id="tools">
+      <button type="button" data-cmd="bold">굵게</button>
+      <button type="button" data-cmd="italic">기울임</button>
+      <button type="button" data-cmd="underline">밑줄</button>
+      <button type="button" data-cmd="strikeThrough">취소선</button>
+      <button type="button" data-link="1">링크</button>
+    </div>
+    <div id="blocks"></div>
+    <p class="hint">빈 줄에서 / 를 누르면 블록을 고릅니다. 이미지, 갤러리, 영상, 표, 할 일, 토글, 인용, 코드가 있습니다.</p>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="js/works.js"></script>
+  <script src="js/editor.js?v=12"></script>
+</body>
+</html>
