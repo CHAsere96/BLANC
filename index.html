@@ -10,7 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://prom-gallery-api.cbmen100.workers.dev" />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=11" />
+  <link rel="stylesheet" href="css/style.css?v=12" />
+  <link rel="stylesheet" href="css/blog.css?v=12" />
 </head>
 <body>
   <header class="top">
@@ -24,30 +25,19 @@
       <button class="add-btn" id="add-btn" type="button">+ 추가</button>
     </div>
   </header>
-
-  <section class="hero">
-    <h1>Lookbook</h1>
-  </section>
-
+  <section class="hero"><h1>Lookbook</h1></section>
   <div class="filters" role="tablist">
     <button class="on" data-sort="new">최신순</button>
     <button data-sort="popular">인기순</button>
     <button data-sort="old">오래된순</button>
   </div>
-
   <div class="gallery" id="grid"></div>
   <div class="more" id="more" hidden></div>
-
-  <footer class="foot">
-    <span>BLANC</span>
-  </footer>
-
+  <footer class="foot"><span>BLANC</span></footer>
   <div class="modal" id="modal" aria-hidden="true">
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="m-title">
       <button class="x" type="button" aria-label="닫기">×</button>
-      <div class="sheet-media">
-        <img id="m-img" alt="" />
-      </div>
+      <div class="sheet-media"><img id="m-img" alt="" /></div>
       <div class="sheet-body">
         <p class="m-meta" id="m-meta"></p>
         <h2 id="m-title"></h2>
@@ -60,7 +50,6 @@
       </div>
     </div>
   </div>
-
   <div class="modal" id="studio" aria-hidden="true">
     <div class="studio-sheet" role="dialog" aria-modal="true">
       <button class="x" type="button" id="studio-x" aria-label="닫기">×</button>
@@ -94,9 +83,7 @@
       </form>
     </div>
   </div>
-
   <div class="toast" id="toast">복사했습니다</div>
-
   <script src="js/works.js"></script>
   <script src="js/main.js?v=10"></script>
 </body>
