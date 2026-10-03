@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BLANC — Blog</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=11" />
+</head>
+<body>
+  <header class="top">
+    <a class="mark" href="./">BLANC</a>
+    <nav class="nav">
+      <a href="./">Lookbook</a>
+      <a class="on" href="blog.html">Blog</a>
+    </nav>
+    <div class="top-right">
+      <p class="live"><span></span> BLOG · <em id="count">0</em></p>
+      <button class="add-btn" id="write-btn" type="button">+ 글</button>
+    </div>
+  </header>
+  <section class="hero">
+    <h1>Blog</h1>
+  </section>
+  <div class="blog-grid" id="list"></div>
+  <footer class="foot"><span>BLANC</span></footer>
+
+  <div class="modal" id="writer">
+    <div class="studio-sheet" role="dialog">
+      <button class="x" type="button" id="writer-x">×</button>
+      <div id="gate">
+        <p class="m-meta">STUDIO</p>
+        <h2>관리자 인증</h2>
+        <input id="pin" type="password" placeholder="PIN" />
+        <button class="copy" type="button" id="unlock">인증</button>
+      </div>
+      <form id="write-form" hidden>
+        <p class="m-meta">NEW POST</p>
+        <h2>글 쓰기</h2>
+        <input id="title" type="text" placeholder="제목" required />
+        <label class="drop" id="cover-drop">
+          <input id="cover" type="file" accept="image/*" hidden />
+          <span>표지 이미지</span>
+        </label>
+        <label class="drop">
+          <input id="slides" type="file" accept="image/*" multiple hidden />
+          <span>캐러셀 이미지 여러 장</span>
+        </label>
+        <textarea id="videos" rows="3" placeholder="영상 URL· 한 줄에 하나 (YouTube, mp4)"></textarea>
+        <textarea id="body" rows="8" placeholder="본문. 빈 줄은 문단을 나눕니다."></textarea>
+        <input id="otp" type="text" inputmode="numeric" maxlength="6" placeholder="관리자 6자리 코드" />
+        <p class="hint" id="otp-hint">prom-gallery와 같은 코드입니다. 이 브라우저에서 한 번만 입력하면 됩니다.</p>
+        <button class="copy" type="submit" id="publish">올리기</button>
+      </form>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="js/works.js"></script>
+  <script src="js/blog.js?v=11"></script>
+</body>
+</html>
